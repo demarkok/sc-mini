@@ -1,11 +1,21 @@
 module Data where
 
+infixl 2 :@: 
+
 type Name = String
-data Expr = Var Name | Ctr Name [Expr] | FCall Name [Expr] | GCall Name [Expr] | Let (Name, Expr) Expr deriving (Eq)
+
+data Expr = Var Name 
+          | Ctr Name [Expr]      
+          | Call Name [Expr] 
+          | Let (Name, Expr) Expr 
+          | Case Expr [(Pat, Expr)] 
+          | Lmb Name Expr 
+          | Expr :@: Expr      
+          deriving (Eq)
+
 data Pat = Pat Name [Name] deriving (Eq)
-data GDef = GDef Name Pat [Name] Expr deriving (Eq)
 data FDef = FDef Name [Name] Expr deriving (Eq)
-data Program = Program [FDef] [GDef] deriving (Eq)
+data Program = Program [FDef] deriving (Eq)
 
 type Renaming = [(Name, Name)]
 type Subst = [(Name, Expr)]
