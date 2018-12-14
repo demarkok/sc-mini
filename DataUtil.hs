@@ -1,6 +1,6 @@
 module DataUtil(
   isValue,isCall,isVar,size,
-  fDef, gDef, gDefs,
+  fDef,
   (//), renaming, vnames,nameSupply,
   nodeLabel,isRepeated,unused
   ) where
@@ -16,7 +16,7 @@ isValue (Lmb _ _) = True
 isValue _ = False
 
 isCall :: Expr -> Bool
-isCall (FCall _ _) = True
+isCall (Call _ _) = True
 isCall _ = False
 
 isVar :: Expr -> Bool
@@ -24,20 +24,20 @@ isVar (Var _) = True
 isVar _ = False
 
 fDef :: Program -> Name -> FDef
-fDef (Program fs _) fname = head [f | f@(FDef x _ _) <- fs, x == fname]
+fDef (Program fs) fname = head [f | f@(FDef x _ _) <- fs, x == fname]
 
-gDefs :: Program -> Name -> [GDef]
-gDefs (Program _ gs) gname = [g | g@(GDef x _ _ _) <- gs, x == gname]
-
-gDef :: Program -> Name -> Name -> GDef
-gDef p gname cname = head [g | g@(GDef _ (Pat c _) _ _) <- gDefs p gname, c == cname]
+filterSub :: Subst -> [Name] -> Subst
+filterSub subst blackList = filter (\(x, _) -> notElem x blackList) subst
 
 (//) :: Expr -> Subst -> Expr
 (Var x) // sub = maybe (Var x) id (lookup x sub)
 (Ctr name args) // sub = Ctr name (map (// sub) args)
-(FCall name args) // sub = FCall name (map (// sub) args)
-(GCall name args) // sub = GCall name (map (// sub) args)
-(Let (x, e1) e2) // sub  = Let (x, (e1 // sub)) (e2 // sub)
+(Call name args) // sub = Call name (map (// sub) args)
+(Let (x, e1) e2) // sub  = Let (x, (e1 // sub)) (e2 // (filterSub sub [x])) -- x is bounded in e2
+(Case e options) // sub = Case (e // sub) (map f options) where
+  f (pat@(Pat _ args), option) = (pat, option // (filterSub sub args))
+(Lmb x e) // sub = Lmb x (e // (filterSub sub [x]))
+(e1 :@: e2) // sub = (e1 // sub) :@: (e2 // sub)
 
 nameSupply :: NameSupply
 nameSupply = ["v" ++ (show i) | i <- [1 ..] ]
@@ -51,9 +51,11 @@ vnames = nub . vnames'
 vnames' :: Expr -> [Name]
 vnames' (Var v) = [v]
 vnames' (Ctr _ args)   = concat $ map vnames' args
-vnames' (FCall _ args) = concat $ map vnames' args
-vnames' (GCall _ args) = concat $ map vnames' args
+vnames' (Call _ args) = concat $ map vnames' args
 vnames' (Let (_, e1) e2) = vnames' e1 ++ vnames' e2
+vnames' (Case e options) = vnames' e ++ (concat $ map (vnames' . snd) options)
+vnames' (Lmb _ e) = vnames' e
+vnames' (e1 :@: e2) = vnames' e1 ++ vnames' e2
 
 isRepeated :: Name -> Expr -> Bool
 isRepeated vn e = (length $ filter (== vn) (vnames' e)) > 1
@@ -76,17 +78,24 @@ renaming e1 e2 = f $ partition isNothing $ renaming' (e1, e2) where
 renaming' :: (Expr, Expr) -> [Maybe (Name, Name)]
 renaming' ((Var x), (Var y)) = [Just (x, y)]
 renaming' ((Ctr n1 args1), (Ctr n2 args2)) | n1 == n2 = concat $ map renaming' $ zip args1 args2
-renaming' ((FCall n1 args1), (FCall n2 args2)) | n1 == n2 = concat $ map renaming' $ zip args1 args2
-renaming' ((GCall n1 args1), (GCall n2 args2)) | n1 == n2 = concat $ map renaming' $ zip args1 args2
+renaming' ((Call n1 args1), (Call n2 args2)) | n1 == n2 = concat $ map renaming' $ zip args1 args2
 renaming' (Let (v, e1) e2, Let (v', e1') e2') = renaming' (e1, e1') ++ renaming' (e2, e2' // [(v, Var v')])
+renaming' (Case e ops, Case e' ops') | (length ops == length ops') = renaming' (e, e') ++ (concat $ map f $ zip ops ops') where
+  f ((Pat c1 vars1, option1), (Pat c2 vars2, option2))
+    | c1 == c2 && (length vars1 == length vars2) = renaming' (option1, option2 // zip vars1 (map Var vars2))
+renaming' ((a1 :@: b1), (a2 :@: b2)) = renaming' (a1, a2) ++ renaming' (b1, b2)
+renaming' ((Lmb v e), (Lmb v' e')) = renaming' (e, e' // [(v, Var v')])
 renaming' _  = [Nothing]
 
 size :: Expr -> Integer
 size (Var _) = 1
 size (Ctr _ args) = 1 + sum (map size args)
-size (FCall _ args) = 1 + sum (map size args)
-size (GCall _ args) = 1 + sum (map size args)
+size (Call _ args) = 1 + sum (map size args)
 size (Let (_, e1) e2) = 1 + (size e1) + (size e2)
+size (Case e ops) = 1 + (size e) + sum (map f ops) where
+  f ((Pat _ vars), option) = 1 + size option
+size (Lmb _ e) = 1 + size e
+size (e1 :@: e2) = 1 + size e1 + size e2
 
 nodeLabel :: Node a -> a
 nodeLabel (Node l _) = l
