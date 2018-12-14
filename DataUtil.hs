@@ -12,11 +12,11 @@ import Data.List
 
 isValue :: Expr -> Bool
 isValue (Ctr _ args) = and $ map isValue args
+isValue (Lmb _ _) = True
 isValue _ = False
 
 isCall :: Expr -> Bool
 isCall (FCall _ _) = True
-isCall (GCall _ _) = True
 isCall _ = False
 
 isVar :: Expr -> Bool
@@ -58,14 +58,18 @@ vnames' (Let (_, e1) e2) = vnames' e1 ++ vnames' e2
 isRepeated :: Name -> Expr -> Bool
 isRepeated vn e = (length $ filter (== vn) (vnames' e)) > 1
 
+
+-- TODO: SIMPLIFY!!
+-- returns renaming applying which to the first expression you get the second one. 
 renaming :: Expr -> Expr -> Maybe Renaming
 renaming e1 e2 = f $ partition isNothing $ renaming' (e1, e2) where
   f (x:_, _) = Nothing
   f (_, ps) = g gs1 gs2
     where
       gs1 = groupBy (\(a, b) (c, d) -> a == c) $ sortBy h $ nub $ catMaybes ps
-      gs2 = groupBy (\(a, b) (c, d) -> b == d) $ sortBy h $ nub $ catMaybes ps
+      gs2 = groupBy (\(a, b) (c, d) -> b == d) $ sortBy j $ nub $ catMaybes ps
       h (a, b) (c, d) = compare a c
+      j (a, b) (c, d) = compare b d
   g xs ys = if all ((== 1) . length) xs && all ((== 1) . length) ys
     then Just (concat xs) else Nothing
 
