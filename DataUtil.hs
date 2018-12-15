@@ -1,6 +1,6 @@
 module DataUtil(
   isValue,isCall,isVar,size,
-  fDef,
+  fDef, chooseOption,
   (//), renaming, vnames,nameSupply,
   nodeLabel,isRepeated,unused
   ) where
@@ -26,9 +26,14 @@ isVar _ = False
 fDef :: Program -> Name -> FDef
 fDef (Program fs) fname = head [f | f@(FDef x _ _) <- fs, x == fname]
 
+-- TODO: FIX renaming
+chooseOption :: Expr -> Expr
+chooseOption (Case (Ctr c cargs) options) = head [e // zip cvars cargs | (Pat c' cvars, e) <- options, c' == c]
+
 filterSub :: Subst -> [Name] -> Subst
 filterSub subst blackList = filter (\(x, _) -> notElem x blackList) subst
 
+-- TODO: FIX (renaming in \y.xy // [(x, y)])
 (//) :: Expr -> Subst -> Expr
 (Var x) // sub = maybe (Var x) id (lookup x sub)
 (Ctr name args) // sub = Ctr name (map (// sub) args)
@@ -45,6 +50,8 @@ nameSupply = ["v" ++ (show i) | i <- [1 ..] ]
 unused :: Contract -> NameSupply -> NameSupply
 unused (Contract _ (Pat _ vs)) = (\\ vs)
 
+
+-- TODO: FIX
 vnames :: Expr -> [Name]
 vnames = nub . vnames'
 

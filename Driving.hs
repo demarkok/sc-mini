@@ -1,4 +1,4 @@
-module Driving where
+ module Driving where
 
 import Data
 import DataUtil
@@ -20,20 +20,41 @@ driveMachine p = drive where
   drive ns (Ctr _ []) = Stop
   drive ns (Ctr _ args) = Decompose args
   drive ns (Let (x, t1) t2) = Decompose [t1, t2]
-  drive ns (FCall name args) = Transient $ e // (zip vs args) where
+  drive ns (Call name args) = Transient $ e // (zip vs args) where
     FDef _ vs e = fDef p name
-  drive ns (GCall gn (Ctr cn cargs : args)) = Transient $ e // sub where
-    (GDef _ (Pat _ cvs) vs e) = gDef p gn cn
-    sub = zip (cvs ++ vs) (cargs ++ args)
-  drive ns (GCall gn args@((Var _):_)) = Variants $ variants gn args where
-    variants gn args = map (scrutinize ns args) (gDefs p gn)
-  drive ns (GCall gn (inner:args)) = inject (drive ns inner) where
-    inject (Transient t) = Transient (GCall gn (t:args))
-    inject (Variants cs) = Variants $ map f cs
-    f (c, t) = (c, GCall gn (t:args))
+  
+  drive ns (Lmb _ e) = Transient e
+  
+  drive ns ((Lmb x e1) :@: e2) = Transient $ e1 // [(x, e2)]
+  drive ns (e1 :@: e2) = Decompose [e1, e2] -- TODO: not sure
 
-scrutinize :: NameSupply -> [Expr] -> GDef -> (Contract, Expr)
-scrutinize ns (Var v : args) (GDef _ (Pat cn cvs) vs body) =
-  (Contract v (Pat cn fresh), body // sub) where
-    fresh = take (length cvs) ns
-    sub = zip (cvs ++ vs) (map Var fresh ++ args)
+  drive ns redex@(Case (Ctr c cargs) options) = Transient $ chooseOption redex
+  drive ns (Case (Var x) options) = Variants $ map (scrutinize ns x) options
+  drive ns (Case other options) = inject (drive ns other) where -- TODO: not sure, what if we need to decompose `other'?
+    inject (Transient t) = Transient (Case t options) -- kind of traverse
+    inject (Variants cs) = Variants $ map f cs
+    f (c, t) = (c, Case t options)
+
+scrutinize :: NameSupply -> Name -> (Pat, Expr) -> (Contract, Expr)
+scrutinize ns v (Pat c cvars, e) = (Contract v (Pat c fresh), e // sub) where
+  fresh = take (length cvars) ns
+  sub = zip cvars (map Var fresh)
+
+
+
+-- scrutinize :: NameSupply -> [Expr] -> GDef -> (Contract, Expr)
+-- scrutinize ns (Var v : args) (GDef _ (Pat cn cvs) vs body) =
+--   (Contract v (Pat cn fresh), body // sub) where
+--     fresh = take (length cvs) ns
+--     sub = zip (cvs ++ vs) (map Var fresh ++ args)
+ 
+    -- drive ns (GCall gn (Ctr cn cargs : args)) = Transient $ e // sub where
+    --   (GDef _ (Pat _ cvs) vs e) = gDef p gn cn
+    --   sub = zip (cvs ++ vs) (cargs ++ args)
+    -- drive ns (GCall gn args@((Var _):_)) = Variants $ variants gn args where
+    --   variants gn args = map (scrutinize ns args) (gDefs p gn)
+    -- drive ns (GCall gn (inner:args)) = inject (drive ns inner) where
+    --   inject (Transient t) = Transient (GCall gn (t:args))
+    --   inject (Variants cs) = Variants $ map f cs
+    --   f (c, t) = (c, GCall gn (t:args))
+    
