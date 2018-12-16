@@ -8,7 +8,7 @@ import Data.Char
 import Data.List
 import Text.ParserCombinators.ReadP
 
--- READ/SHOW
+-- READ
 readVar1 :: ReadS Name
 readVar1 i = concat [lex s1 | (",", s1) <- lex i]
 
@@ -21,17 +21,47 @@ instance Read Program where
 readExpr :: ReadP Expr
 readExpr = readS_to_P readsExpr
 
-readsExpr :: ReadS Expr
-readsExpr i = catMaybes [merge n (readArgs s)  s | (n, s) <- lex i] where
-  merge n@('g':_) [(args, s1)] _ = Just (GCall n args, s1)
-  merge n@('f':_) [(args, s1)] _ = Just (FCall n args, s1)
-  merge n@(x:_) [(args, s1)] _ | isUpper x = Just (Ctr n args, s1)
-  merge n@(x:_) [] s | isLower x = Just (Var n, s)
-  merge _ _ _ = Nothing
 
+readsExpr :: ReadS Expr
+readsExpr i = catMaybes [merge n s | (n, s) <- lex i] where
+  merge n s 
+    | "f" `isPrefixOf` n = Just (Call n args, s1)
+    | "lmb" `isPrefixOf` n = Just $ head $ readLambda s
+    | "app" `isPrefixOf` n = Just ((args !! 0) :@: (args !! 1), s1)
+    | "case" `isPrefixOf` n = Just $ head $ readCase s
+    | isUpper $ head n = Just (Ctr n args, s1)
+    | isLower $ head n = Just (Var n, s) where
+      [(args, s1)] = readArgs s
+  merge _ _ = Nothing
+
+ 
 readArgs :: ReadS [Expr]
 readArgs = readP_to_S $ between (char '(') (char ')') (sepBy readExpr (char ','))
 
+readLambda :: ReadS Expr
+readLambda = readP_to_S $ do
+  skipSpaces
+  string "(" ; skipSpaces
+  x <- readS_to_P lex ; skipSpaces
+  string "->" ; skipSpaces
+  expr <- readS_to_P readsExpr ; skipSpaces
+  string ")"; skipSpaces
+  return $ Lmb x expr
+
+
+readCase :: ReadS Expr
+readCase = readP_to_S $ do
+  skipSpaces
+  expr <- readS_to_P readsExpr ; skipSpaces
+  string "of" ; skipSpaces
+  Case expr <$> between (char '[') (char ']') (sepBy readOption (char '|')) where
+    readOption = do
+      skipSpaces
+      pat <- readS_to_P readSPat ; skipSpaces
+      string "=>" ; skipSpaces
+      option <- readS_to_P readsExpr ; skipSpaces
+      return (pat, option)
+  
 readVars :: ReadS [Name]
 readVars = readP_to_S $ between (char '(') (char ')') (sepBy (readS_to_P lex) (char ','))
 
@@ -47,25 +77,17 @@ readSPat :: ReadS Pat
 readSPat i = [(Pat n vars, s2)|
   (n, s) <- lex i,
   (vars, s2) <- readVars s]
--- read g-function
-readGDef i = [ (GDef n p vs body, s6) |
-  (n@('g':_), s) <- lex i,
-  ("(", s1) <- lex s,
-  (p, s2) <- readSPat s1,
-  (vs, s3) <- readP_to_S (manyTill (readS_to_P readVar1)  (char ')')) s2,
-  ("=", s4) <- lex s3,
-  (body, s5) <- readsExpr s4,
-  (";", s6) <- lex s5
-  ]
 
-readProgram s = [readP1 (Program [] []) s]
+readProgram s = [readP1 (Program []) s]
 
-readP1 p@(Program fs gs) s = next (readFDef s) (readGDef s) where
-  next [(f, s1)] _ = readP1 (Program (fs++[f]) gs) s1
-  next _ [(g, s1)] = readP1 (Program fs (gs++[g])) s1
-  next _ _ = (p, s)
+readP1 p@(Program fs) s = next (readFDef s) where
+  next [(f, s1)] = readP1 (Program (fs++[f])) s1
+  next _ = (p, s)
 
-printTree t = unlines $ take 1000 $ pprintTree "" "" t
+
+-- SHOW
+
+printTree t = unlines $ take 50 $ pprintTree "" "" t
 
 pprintTree :: String -> String -> Graph Conf -> [String]
 pprintTree indent msg (Node expr next) = make next where
@@ -86,18 +108,16 @@ instance Show Expr where
   show (Ctr "B" []) = "\'B\'"
   show (Var n) = n
   show (Ctr n es) = n ++ "(" ++ (intercalate ", " (map show es)) ++ ")"
-  show (FCall n es) = (fn n) ++ "(" ++ (intercalate ", " (map show es)) ++ ")"
-  show (GCall n es) = (fn n) ++ "(" ++ (intercalate ", " (map show es)) ++ ")"
+  show (Call n es) = n ++ "(" ++ (intercalate ", " (map show es)) ++ ")"
   show (Let (v, e1) e2) = "let " ++ v ++ " = " ++ (show e1) ++ " in " ++ (show e2)
+  show (Case e options) = "case " ++ (show e) ++ " of " ++ "[" ++ (intercalate " | " (map f options)) ++ "]" where
+    f (pat, option) = show pat ++ " => " ++ show option
+  show (Lmb x e) = "lmb(" ++ show x ++ " -> " ++ show e ++ ")"
+  show (a :@: b) = "app(" ++ show a ++ "," ++ show b ++ ")"
 
-fn :: String -> String
-fn (_:s:ss) = (toLower s) : ss
 
 instance Show FDef where
-  show (FDef n args body) = (fn n) ++ "(" ++ intercalate ", " args ++ ") = " ++ (show body) ++ ";"
-
-instance Show GDef where
-  show (GDef n p args body) = (fn n) ++ "(" ++ intercalate ", " (show p:args) ++ ") = " ++ (show body) ++ ";"
+  show (FDef n args body) = n ++ "(" ++ intercalate ", " args ++ ") = " ++ (show body) ++ ";"
 
 instance Show Pat where
   show (Pat "Nil" vs) = "``\'\'"
@@ -108,7 +128,7 @@ instance Show Contract where
   show (Contract n p) = n ++ " == " ++ (show p)
 
 instance Show Program where
-  show (Program fs gs) = intercalate "\n" $ (map show fs) ++ (map show gs)
+  show (Program fs) = intercalate "\n" $ (map show fs)
 
 instance Show a => Show (Step a) where
   show (Transient a) = "=> " ++ (show a)
