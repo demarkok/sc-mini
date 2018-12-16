@@ -1,4 +1,4 @@
- module Driving where
+module Driving where
 
 import Data
 import DataUtil
@@ -25,8 +25,14 @@ driveMachine p = drive where
   
   drive ns (Lmb _ e) = Transient e
   
+  drive ns (var@(Var _) :@: e2) = Decompose [var, e2]
   drive ns ((Lmb x e1) :@: e2) = Transient $ e1 // [(x, e2)]
-  drive ns (e1 :@: e2) = Decompose [e1, e2] -- TODO: not sure
+  drive ns (e1 :@: e2) = inject (drive ns e1) where
+    inject (Transient t) = Transient (t :@: e2)
+    inject (Variants cs) = Variants $ map f cs 
+    -- Then We're sure that e1 is an application cause `Let :@: e2' and `Ctr :@: e2' are impossible
+    inject (Decompose apps) = Decompose $ apps ++ [e2] 
+    f (c, t) = (c, t :@: e2)
 
   drive ns redex@(Case (Ctr c cargs) options) = Transient $ chooseOption redex
   drive ns (Case (Var x) options) = Variants $ map (scrutinize ns x) options
@@ -39,22 +45,3 @@ scrutinize :: NameSupply -> Name -> (Pat, Expr) -> (Contract, Expr)
 scrutinize ns v (Pat c cvars, e) = (Contract v (Pat c fresh), e // sub) where
   fresh = take (length cvars) ns
   sub = zip cvars (map Var fresh)
-
-
-
--- scrutinize :: NameSupply -> [Expr] -> GDef -> (Contract, Expr)
--- scrutinize ns (Var v : args) (GDef _ (Pat cn cvs) vs body) =
---   (Contract v (Pat cn fresh), body // sub) where
---     fresh = take (length cvs) ns
---     sub = zip (cvs ++ vs) (map Var fresh ++ args)
- 
-    -- drive ns (GCall gn (Ctr cn cargs : args)) = Transient $ e // sub where
-    --   (GDef _ (Pat _ cvs) vs e) = gDef p gn cn
-    --   sub = zip (cvs ++ vs) (cargs ++ args)
-    -- drive ns (GCall gn args@((Var _):_)) = Variants $ variants gn args where
-    --   variants gn args = map (scrutinize ns args) (gDefs p gn)
-    -- drive ns (GCall gn (inner:args)) = inject (drive ns inner) where
-    --   inject (Transient t) = Transient (GCall gn (t:args))
-    --   inject (Variants cs) = Variants $ map f cs
-    --   f (c, t) = (c, GCall gn (t:args))
-    
