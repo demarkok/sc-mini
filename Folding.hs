@@ -6,6 +6,7 @@ import DataUtil
 foldTree :: Tree Conf -> Graph Conf
 foldTree t = fixTree (tieKnot []) t
 
+-- takes list of ancestors, node and it's child. Returns fixed child tree.
 tieKnot :: [Node Conf] -> Node Conf -> Tree Conf -> Graph Conf
 tieKnot ns n t@(Node e _) =
   case [(k, r) | k <- n:ns, isCall e, Just r <- [renaming (nodeLabel k) e]] of

@@ -7,8 +7,9 @@ import Data.Maybe
 
 import Control.Monad.State
 
-abstract :: NameSupply -> Expr -> Expr -> Gen
-abstract ns e1 e2 = evalState (generalize e1 e2) (ns)
+abstract :: NameSupply -> Expr -> Expr -> Expr
+abstract ns e1 e2 = foldr Let e th1 where
+    (e, th1, th2) = reduceGen $ evalState (generalize e1 e2) ns
 
 fresh :: State NameSupply Name
 fresh = do -- could be done explicitly?
@@ -20,6 +21,17 @@ destructApp :: Expr -> [Expr]
 destructApp (e1 :@: e2) = destructApp e1 ++ destructApp e2
 destructApp e = [e]
 
+reduceGen :: Gen -> Gen
+reduceGen gen@(e, th1, th2) 
+    | (x, x'):_ <- [(x, x') | (x, e) <- th1, 
+                              (x', e') <- th1, 
+                               x /= x', e == e', 
+                               lookup x th2 == lookup x' th2]
+    = (e // [(x, Var x')], clean x th1, clean x th2)
+    | otherwise 
+    = gen where
+        clean x = filter ((/= x) . fst)
+ 
 generalize :: Expr -> Expr -> State NameSupply Gen
 generalize (Ctr c1 args1) (Ctr c2 args2)
     | c1 == c2 && length args1 == length args2 = do 

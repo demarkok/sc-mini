@@ -8,15 +8,19 @@ import Data.Char
 import Data.List
 import Text.ParserCombinators.ReadP
 
+
 -- READ
 readVar1 :: ReadS Name
 readVar1 i = concat [lex s1 | (",", s1) <- lex i]
 
+
 instance Read Expr where
   readsPrec _ s = readsExpr s
 
+
 instance Read Program where
   readsPrec _ s = readProgram s
+
 
 readExpr :: ReadP Expr
 readExpr = readS_to_P readsExpr
@@ -34,9 +38,11 @@ readsExpr i = catMaybes [merge n s | (n, s) <- lex i] where
       [(args, s1)] = readArgs s
   merge _ _ = Nothing
 
+
  
 readArgs :: ReadS [Expr]
 readArgs = readP_to_S $ between (char '(') (char ')') (sepBy readExpr (char ','))
+
 
 readLambda :: ReadS Expr
 readLambda = readP_to_S $ do
@@ -47,6 +53,7 @@ readLambda = readP_to_S $ do
   expr <- readS_to_P readsExpr ; skipSpaces
   string ")"; skipSpaces
   return $ Lmb x expr
+
 
 
 readCase :: ReadS Expr
@@ -62,8 +69,10 @@ readCase = readP_to_S $ do
       option <- readS_to_P readsExpr ; skipSpaces
       return (pat, option)
   
+
 readVars :: ReadS [Name]
 readVars = readP_to_S $ between (char '(') (char ')') (sepBy (readS_to_P lex) (char ','))
+
 
 readFDef :: ReadS FDef
 readFDef i = [ (FDef n vars body, s4) |
@@ -73,12 +82,15 @@ readFDef i = [ (FDef n vars body, s4) |
   (body, s3) <- readsExpr s2,
   (";", s4) <- lex s3]
 
+
 readSPat :: ReadS Pat
 readSPat i = [(Pat n vars, s2)|
   (n, s) <- lex i,
   (vars, s2) <- readVars s]
 
+
 readProgram s = [readP1 (Program []) s]
+
 
 readP1 p@(Program fs) s = next (readFDef s) where
   next [(f, s1)] = readP1 (Program (fs++[f])) s1
@@ -87,7 +99,10 @@ readP1 p@(Program fs) s = next (readFDef s) where
 
 -- SHOW
 
-printTree t = unlines $ take 50 $ pprintTree "" "" t
+
+printTree :: Int -> Graph Conf -> String
+printTree n t = unlines $ take n $ pprintTree "" "" t
+
 
 pprintTree :: String -> String -> Graph Conf -> [String]
 pprintTree indent msg (Node expr next) = make next where
@@ -97,6 +112,7 @@ pprintTree indent msg (Node expr next) = make next where
   make (Decompose ts) = (indent ++ msg) :  (indent ++ "|__" ++ show expr): (concat (map (pprintTree (indent ++ " ") "|") ts))
   make (Variants cs) =
     (indent ++ msg) :  (indent ++ "|__" ++  show expr) : (concat (map (\(x, t) -> pprintTree (indent ++ " ") ("?" ++ show x) t) cs))
+
 
 instance Show Expr where
   show (Ctr "Nil" []) = "Nil"
@@ -116,19 +132,24 @@ instance Show Expr where
   show (a :@: b) = "app(" ++ show a ++ "," ++ show b ++ ")"
 
 
+
 instance Show FDef where
   show (FDef n args body) = n ++ "(" ++ intercalate ", " args ++ ") = " ++ (show body) ++ ";"
+
 
 instance Show Pat where
   show (Pat "Nil" vs) = "Nil"
   show (Pat "Cons" [v1, v2]) = v1 ++ ":" ++ v2
   show (Pat cn vs) = cn ++ "(" ++ intercalate "," vs ++ ")"
 
+
 instance Show Contract where
   show (Contract n p) = n ++ " == " ++ (show p)
 
+
 instance Show Program where
   show (Program fs) = intercalate "\n" $ (map show fs)
+
 
 instance Show a => Show (Step a) where
   show (Transient a) = "=> " ++ (show a)
@@ -136,16 +157,3 @@ instance Show a => Show (Step a) where
   show Stop = "!"
   show (Decompose ds) = show ds
   show (Fold e _) = "↑" ++ (show e)
-
--- Latex
-pprintLTree :: Graph Conf -> String
-pprintLTree (Node expr next) = make next where
-  make (Fold _ _) = "node[conf]{" ++ (show expr) ++ "}"
-  make Stop = "node[conf]{" ++ (show expr) ++ "}"
-  make (Transient t) = "node[conf]{" ++ (show expr) ++ "}\nchild[->]{" ++ (pprintLTree t) ++ "}"
-  make (Decompose ts) = "node[conf]{" ++ (show expr) ++ "}" ++
-    (concat (map (\t -> "\nchild[->]{" ++ (pprintLTree t) ++ "}") ts))
-  make (Variants [(x1, t1), (x2, t2)]) =
-    "node[conf]{" ++ (show expr) ++ "}" ++
-      ("\nchild[->]{" ++ (pprintLTree t1) ++ "\nedge from parent node[left,label,xshift=-5mm]{" ++ (show x1) ++ "}}") ++
-      ("\nchild[->]{" ++ (pprintLTree t2) ++ "\nedge from parent node[right,label,xshift=5mm]{" ++ (show x2) ++ "}}")

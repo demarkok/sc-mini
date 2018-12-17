@@ -17,23 +17,28 @@ isValue (Ctr _ args) = and $ map isValue args
 isValue (Lmb _ _) = True
 isValue _ = False
 
+
 isCall :: Expr -> Bool
 isCall (Call _ _) = True
 isCall _ = False
+
 
 isVar :: Expr -> Bool
 isVar (Var _) = True
 isVar _ = False
 
+
 fDef :: Program -> Name -> FDef
 fDef (Program fs) fname = head [f | f@(FDef x _ _) <- fs, x == fname]
 
--- TODO: FIX renaming
+
 chooseOption :: Expr -> Expr
 chooseOption (Case (Ctr c cargs) options) = head [e // zip cvars cargs | (Pat c' cvars, e) <- options, c' == c]
 
+
 filterSub :: Subst -> [Name] -> Subst
 filterSub subst blackList = filter (\(x, _) -> notElem x blackList) subst
+
 
 (//) :: Expr -> Subst -> Expr
 (Var x) // sub = maybe (Var x) id (lookup x sub)
@@ -42,28 +47,29 @@ filterSub subst blackList = filter (\(x, _) -> notElem x blackList) subst
 (Let (x, e1) e2) // sub  = Let (x', (e1 // sub)) (e2' // (filterSub sub [x'])) where
   x' = substRedexNewName x e2 sub
   e2' = e2 // [(x, Var x')]
-
 (Case e options) // sub = Case (e // sub) (map f options) where
   f (pat@(Pat c args), option) = ((Pat c args'), option' // (filterSub sub args)) where
     args' = map q args
     q x = substRedexNewName x option sub
     option' = option // zip args (map Var args')
-
 (Lmb x e) // sub = Lmb x' (e' // (filterSub sub [x'])) where
   x' = substRedexNewName x e sub
   e' = e // [(x, Var x')]
-
 (e1 :@: e2) // sub = (e1 // sub) :@: (e2 // sub)
+
 
 substRedexNewName :: Name -> Expr -> Subst -> Name
 substRedexNewName x xBound xSubst
   | any (elem x) $ (vnames . snd) <$> filter ((`elem` (vnames xBound)) . fst) xSubst = newName x
   | otherwise = x
+
   
 newName x = (x ++ "'" ++ (show $ length x))
 
+
 nameSupply :: NameSupply
 nameSupply = ["v" ++ (show i) | i <- [1 ..] ]
+
 
 unused :: Contract -> NameSupply -> NameSupply
 unused (Contract _ (Pat _ vs)) = (\\ vs)
@@ -82,11 +88,12 @@ vnames' (Case e options) = vnames' e ++ (concat $ map f options) where
 vnames' (Lmb x e) = (vnames' e) \\ [x]
 vnames' (e1 :@: e2) = vnames' e1 ++ vnames' e2
 
+
 isRepeated :: Name -> Expr -> Bool
 isRepeated vn e = (length $ filter (== vn) (vnames' e)) > 1
 
 
--- TODO: SIMPLIFY!!
+-- TODO: SIMPLIFY
 -- returns renaming applying which to the first expression you get the second one. 
 renaming :: Expr -> Expr -> Maybe Renaming
 renaming e1 e2 = f $ partition isNothing $ renaming' (e1, e2) where
@@ -122,16 +129,19 @@ size (Case e ops) = 1 + (size e) + sum (map f ops) where
 size (Lmb _ e) = 1 + size e
 size (e1 :@: e2) = 1 + size e1 + size e2
 
+
 nodeLabel :: Node a -> a
 nodeLabel (Node l _) = l
 
 step :: Node a -> Step (Graph a)
 step (Node _ s) = s
 
+
 patternSubst :: Pat -> Pat -> Maybe Subst
 patternSubst (Pat c1 args1) (Pat c2 args2) = do
     guard $ c1 == c2
     renameList args1 args2
+
 
 renameList :: [Name] -> [Name] -> Maybe Subst
 renameList x y = do
@@ -144,4 +154,3 @@ renameList x y = do
     guard $ all ((== 1) . length) gs1
     guard $ all ((== 1) . length) gs2
     return $ zip x (Var <$> y)
-

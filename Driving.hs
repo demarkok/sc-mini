@@ -3,15 +3,6 @@ module Driving where
 import Data
 import DataUtil
 
-buildTree :: Machine Conf -> Conf -> Tree Conf
-buildTree m e = bt m nameSupply e
-
-bt :: Machine Conf -> NameSupply -> Conf -> Tree Conf
-bt m ns c = case m ns c of
-  Decompose ds -> Node c $ Decompose (map (bt m ns) ds)
-  Transient e -> Node c $ Transient (bt m ns e)
-  Stop -> Node c Stop
-  Variants cs -> Node c $ Variants [(c, bt m (unused c ns) e) | (c, e) <- cs]
 
 driveMachine :: Program -> Machine Conf
 driveMachine p = drive where
@@ -36,10 +27,11 @@ driveMachine p = drive where
 
   drive ns redex@(Case (Ctr c cargs) options) = Transient $ chooseOption redex
   drive ns (Case (Var x) options) = Variants $ map (scrutinize ns x) options
-  drive ns (Case other options) = inject (drive ns other) where -- TODO: not sure, what if we need to decompose `other'?
+  drive ns (Case other options) = inject (drive ns other) where -- TODO: what if we need to decompose `other'?
     inject (Transient t) = Transient (Case t options) -- kind of traverse
     inject (Variants cs) = Variants $ map f cs
     f (c, t) = (c, Case t options)
+
 
 scrutinize :: NameSupply -> Name -> (Pat, Expr) -> (Contract, Expr)
 scrutinize ns v (Pat c cvars, e) = (Contract v (Pat c fresh), e // sub) where
