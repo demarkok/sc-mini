@@ -21,15 +21,17 @@ type Renaming = [(Name, Name)]
 type Subst = [(Name, Expr)]
 type NameSupply = [Name]
 
+type Gen = (Expr, Subst, Subst)
+
 type Conf = Expr
 type Value = Expr
 type Task = (Conf, Program)
 type Env = [(Name, Value)]
 
-data Contract = Contract Name Pat
-data Step a = Transient a | Variants [(Contract, a)] | Stop | Decompose [a] | Fold a Renaming
+data Contract = Contract Name Pat -- Condition in a case expression
+data Step a = Transient a | Variants [(Contract, a)] | Stop | Decompose [a] | Fold a Renaming -- Representation of computational step
 data Graph a = Node a (Step (Graph a))
 type Tree a = Graph a
 type Node a = Tree a
 
-type Machine a = NameSupply -> a -> Step a
+type Machine a = NameSupply -> a -> Step a -- Function calculating one step of computation

@@ -2,13 +2,15 @@ module DataUtil(
   isValue,isCall,isVar,size,
   fDef, chooseOption,
   (//), renaming, vnames,nameSupply,
-  nodeLabel,isRepeated,unused
+  nodeLabel,isRepeated,unused,patternSubst
   ) where
 
 import Data
 import Data.Maybe
 import Data.Char
 import Data.List
+import Control.Monad
+
 
 isValue :: Expr -> Bool
 isValue (Ctr _ args) = and $ map isValue args
@@ -33,16 +35,32 @@ chooseOption (Case (Ctr c cargs) options) = head [e // zip cvars cargs | (Pat c'
 filterSub :: Subst -> [Name] -> Subst
 filterSub subst blackList = filter (\(x, _) -> notElem x blackList) subst
 
--- TODO: FIX (renaming in \y.xy // [(x, y)])
 (//) :: Expr -> Subst -> Expr
 (Var x) // sub = maybe (Var x) id (lookup x sub)
 (Ctr name args) // sub = Ctr name (map (// sub) args)
 (Call name args) // sub = Call name (map (// sub) args)
-(Let (x, e1) e2) // sub  = Let (x, (e1 // sub)) (e2 // (filterSub sub [x])) -- x is bounded in e2
+(Let (x, e1) e2) // sub  = Let (x', (e1 // sub)) (e2' // (filterSub sub [x'])) where
+  x' = substRedexNewName x e2 sub
+  e2' = e2 // [(x, Var x')]
+
 (Case e options) // sub = Case (e // sub) (map f options) where
-  f (pat@(Pat _ args), option) = (pat, option // (filterSub sub args))
-(Lmb x e) // sub = Lmb x (e // (filterSub sub [x]))
+  f (pat@(Pat c args), option) = ((Pat c args'), option' // (filterSub sub args)) where
+    args' = map q args
+    q x = substRedexNewName x option sub
+    option' = option // zip args (map Var args')
+
+(Lmb x e) // sub = Lmb x' (e' // (filterSub sub [x'])) where
+  x' = substRedexNewName x e sub
+  e' = e // [(x, Var x')]
+
 (e1 :@: e2) // sub = (e1 // sub) :@: (e2 // sub)
+
+substRedexNewName :: Name -> Expr -> Subst -> Name
+substRedexNewName x xBound xSubst
+  | any (elem x) $ (vnames . snd) <$> filter ((`elem` (vnames xBound)) . fst) xSubst = newName x
+  | otherwise = x
+  
+newName x = (x ++ "'" ++ (show $ length x))
 
 nameSupply :: NameSupply
 nameSupply = ["v" ++ (show i) | i <- [1 ..] ]
@@ -51,7 +69,6 @@ unused :: Contract -> NameSupply -> NameSupply
 unused (Contract _ (Pat _ vs)) = (\\ vs)
 
 
--- TODO: FIX
 vnames :: Expr -> [Name]
 vnames = nub . vnames'
 
@@ -59,9 +76,10 @@ vnames' :: Expr -> [Name]
 vnames' (Var v) = [v]
 vnames' (Ctr _ args)   = concat $ map vnames' args
 vnames' (Call _ args) = concat $ map vnames' args
-vnames' (Let (_, e1) e2) = vnames' e1 ++ vnames' e2
-vnames' (Case e options) = vnames' e ++ (concat $ map (vnames' . snd) options)
-vnames' (Lmb _ e) = vnames' e
+vnames' (Let (x, e1) e2) = vnames' e1 ++ (vnames' e2 \\ [x])
+vnames' (Case e options) = vnames' e ++ (concat $ map f options) where
+  f (Pat _  pt, option) = vnames' option \\ pt
+vnames' (Lmb x e) = (vnames' e) \\ [x]
 vnames' (e1 :@: e2) = vnames' e1 ++ vnames' e2
 
 isRepeated :: Name -> Expr -> Bool
@@ -109,3 +127,21 @@ nodeLabel (Node l _) = l
 
 step :: Node a -> Step (Graph a)
 step (Node _ s) = s
+
+patternSubst :: Pat -> Pat -> Maybe Subst
+patternSubst (Pat c1 args1) (Pat c2 args2) = do
+    guard $ c1 == c2
+    renameList args1 args2
+
+renameList :: [Name] -> [Name] -> Maybe Subst
+renameList x y = do
+    guard $ length x == length y
+    let r = zip x y
+    let gs1 = groupBy (\(a, b) (c, d) -> a == c) $ sortBy h $ nub r where
+        h (a, b) (c, d) = compare a c
+    let gs2 = groupBy (\(a, b) (c, d) -> b == d) $ sortBy j $ nub r where
+        j (a, b) (c, d) = compare b d
+    guard $ all ((== 1) . length) gs1
+    guard $ all ((== 1) . length) gs2
+    return $ zip x (Var <$> y)
+
