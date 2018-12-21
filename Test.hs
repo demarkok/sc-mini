@@ -44,3 +44,13 @@ kmpPrintTree2 = putTree $ buildTree (kmpExpr2, kmp)
 
 kmpResult2 :: Task
 kmpResult2 = supercompile (kmpExpr2, kmp)
+
+inf :: Program
+inf = read "f(x) = f(S(x));"
+
+infExpr :: Expr
+infExpr = read "f(Z())";
+
+infResult = supercompile (infExpr, inf)
+
+infTree = putTree $ buildTree (infExpr, inf)

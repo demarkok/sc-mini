@@ -11,7 +11,7 @@ import MSG
 
 
 buildTree :: Task -> Graph Conf
-buildTree (e, p) = simplify $ foldTree $ buildFTree (driveMachine p) e
+buildTree (e, p) = simplify $ foldTree $ buildGTree (driveMachine p) e
 
 buildTreeEmbedWhistle :: Task -> Graph Conf
 buildTreeEmbedWhistle (e, p) = simplify $ foldTree $ buildGTree (driveMachine p) e
@@ -70,7 +70,7 @@ generalizeT' h d ns (Node t (Variants cs)) = Node t $ Variants [(c, generalizeT'
 generalizeT' h d ns w@(Node t (Transient e))
   | _:_ <- [(k, r) | k <- h, isCall t, Just r <- [renaming (nodeLabel k) t]] 
   = w
-  | k:_ <- [k | k <- h, isCall t, (nodeLabel k) <: t]
+  | k:_ <- [k | k <- h, isCall t, (nodeLabel k) <: t, isGood (nodeLabel k) t]
   , t' <- abstract ns t (nodeLabel k)
   = generalizeT' h d ns (bft d ns t')
   | otherwise

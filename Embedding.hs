@@ -14,14 +14,22 @@ divin :: Expr -> Expr -> Bool
 embed :: Expr -> Expr -> Bool
 
 
+isGood :: Expr -> Expr -> Bool
+isGood (Call f1 args1) (Call f2 args2) = and $ zipWith same args1 args2 where
+    same (Var _) (Var _) = True
+    same (Var _) _ = False
+    same _ (Var _) = False
+    same _ _ = True
+
+
+
 e1 <: e2 = or $ do
     let fv1 = vnames e1
     let fv2 = vnames e2
     right <- replicateM (length fv1) fv2
     let renaming = zip fv1 (map Var right)
-    return $ (e1 // renaming) `embed` e2
+    return $ (e1 // renaming) `coupl` e2 
 
--- are (x y) z and x (y z) coupled?
 
 e1 `embed` e2 = e1 `coupl` e2 || e1 `divin` e2
 
