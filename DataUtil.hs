@@ -61,13 +61,11 @@ isRepeated vn e = (length $ filter (== vn) (vnames' e)) > 1
 renaming :: Expr -> Expr -> Maybe Renaming
 renaming e1 e2 = f $ partition isNothing $ renaming' (e1, e2) where
   f (x:_, _) = Nothing
-  f (_, ps) = g gs1 gs2
+  f (_, ps) = g gs1
     where
       gs1 = groupBy (\(a, b) (c, d) -> a == c) $ sortBy h $ nub $ catMaybes ps
-      gs2 = groupBy (\(a, b) (c, d) -> b == d) $ sortBy j $ nub $ catMaybes ps
       h (a, b) (c, d) = compare a c
-      j (a, b) (c, d) = compare b d
-  g xs ys = if all ((== 1) . length) xs && all ((== 1) . length) ys
+  g xs = if all ((== 1) . length) xs
     then Just (concat xs) else Nothing
 
 renaming' :: (Expr, Expr) -> [Maybe (Name, Name)]
